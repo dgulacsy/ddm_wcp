@@ -1,0 +1,78 @@
+---
+title: "DDM - West Coast Protein"
+author: "Julianna Szabo, Karola Takacs, Dominik Gulacsy"
+date: "19/02/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message=FALSE, warning=FALSE, cache = T)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r initenv}
+# Initialize environment --------------------------------------------------
+# CLEAR MEMORY
+rm(list=ls())
+
+# General
+library(tidyverse)
+library(Hmisc)
+library(skimr)
+library(janitor)
+# Viz
+library(ggplot2)
+library(cowplot)
+library(knitr)
+```
+
+#
+
+```{r dataimp}
+#import data
+df<-read_csv("data/wcp_raw_trans_data.csv") %>%  clean_names()
+
+# Look at the data
+skim(df)
+
+# Convert to appropriate data types
+# Remove thousand seps
+df$sales_this_year <- as.numeric(gsub(",","",df$sales_this_year))
+
+# Percentage to number
+pvars<-names(select(df,matches("*._p_")))
+df <- df %>%  mutate_at(pvars, funs(as.numeric(gsub("%","",.))/100)
+)
+
+# Factors
+factors<- c("state","sales_person","partner_profil_oracle","key_accounts","amazon_web","relationship_quality","stand_alone_shops","active_partner")
+df <- df %>%  mutate_at(factors, funs(as.factor(.))
+)
+
+# Numeric to character
+df$partner_code <- as.character(df$partner_code)
+
+```
+
+<!-- ![](pic) -->
+
+```{r eda}
+# EDA -------
+# Histograms
+df %>%
+  keep(is.numeric) %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+  facet_wrap(~key, scales = "free") +
+  geom_histogram()+
+  theme_bw() + 
+  scale_fill_identity()
+
+
+```
+
