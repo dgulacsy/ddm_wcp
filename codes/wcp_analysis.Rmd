@@ -39,8 +39,11 @@ df<-read_csv("data/wcp_raw_trans_data.csv") %>%  clean_names()
 
 # Look at the data
 skim(df)
+```
 
-# Convert to appropriate data types
+
+```{r data_type_conversion}
+# Convert to appropriate data types -------
 # Remove thousand seps
 df$sales_this_year <- as.numeric(gsub(",","",df$sales_this_year))
 
@@ -56,6 +59,24 @@ df <- df %>%  mutate_at(factors, funs(as.factor(.))
 
 # Numeric to character
 df$partner_code <- as.character(df$partner_code)
+
+```
+
+```{r sample design}
+
+# Filter for active partners
+df <- df %>% filter(active_partner==1)
+
+# Impute variables
+# Population based on city
+
+# amazon_web
+
+
+
+
+# Remove observations with NA
+df <- na.omit(df)
 
 ```
 
@@ -76,4 +97,6 @@ df %>%
 
 
 ```
+
+
 
