@@ -29,9 +29,15 @@ library(janitor)
 library(ggplot2)
 library(cowplot)
 library(knitr)
-```
+# Modeling
+library(NbClust)
+library(factoextra)
 
-#
+# Set visuals
+theme_set(theme_minimal())
+color=c("slateblue","violetred","gray")
+
+```
 
 ```{r dataimp}
 #import data
@@ -40,7 +46,6 @@ df<-read_csv("data/wcp_raw_trans_data.csv") %>%  clean_names()
 # Look at the data
 skim(df)
 ```
-
 
 ```{r data_type_conversion}
 # Convert to appropriate data types -------
@@ -53,7 +58,7 @@ df <- df %>%  mutate_at(pvars, funs(as.numeric(gsub("%","",.))/100)
 )
 
 # Factors
-factors<- c("state","sales_person","partner_profil_oracle","key_accounts","amazon_web","relationship_quality","stand_alone_shops","active_partner")
+factors<- c("state","region","sales_person","partner_profil_oracle","key_accounts","amazon_web","relationship_quality","stand_alone_shops","active_partner")
 df <- df %>%  mutate_at(factors, funs(as.factor(.))
 )
 
@@ -63,21 +68,35 @@ df$partner_code <- as.character(df$partner_code)
 ```
 
 ```{r sample design}
+# Filter for active partners -----
+df <- df %>% filter(active_partner==1) %>% 
+  select(-active_partner)
 
-# Filter for active partners
-df <- df %>% filter(active_partner==1)
+# Impute variables ----
+# Impute Population based on city code
+imp_pop<- df %>% 
+  group_by(city_village) %>%
+  summarise(
+    avg_pop = mean(population, na.rm = T)
+  )
 
-# Impute variables
-# Population based on city
+for (i in 1:dim(df)[1]){
+  if(is.na(df[i,"population"])){
+    miss_pop_city <- as.character(df[i,"city_village"])
+    df[i,"population"]<-imp_pop[miss_pop_city,"avg_pop"]
+  }
+}
 
-# amazon_web
+# amazon_web replace NAs and "-" with zero
+df <- df %>% mutate(amazon_web=ifelse(is.na(amazon_web),0,1))
+df$amazon_web <- as.factor(df$amazon_web)
 
-
-
+# Impute 0 for NA shop size in case of webshops
+df <- df %>% 
+  mutate(size_of_the_shop_m2 = ifelse((partner_profil_oracle=="Webshop" & is.na(size_of_the_shop_m2)),0,size_of_the_shop_m2))
 
 # Remove observations with NA
 df <- na.omit(df)
-
 ```
 
 <!-- ![](pic) -->
@@ -94,9 +113,60 @@ df %>%
   theme_bw() + 
   scale_fill_identity()
 
+# Plots
+ggplot(df, aes(x = gm_this_year)) + 
+  geom_histogram(fill=color[1]) + 
+  labs(title = "Distribution of Gross Margin", x= "Gross Margin", y="# partners")
+describe(df$gm_this_year)
 
+# Issues in the data that raise questions ---------
+
+# Physical shops with less than 5 sqm size or more than 1000 sqm
+sm_shops<- df %>% 
+  filter(partner_profil_oracle!="Webshop", (size_of_the_shop_m2<5 | size_of_the_shop_m2>1000)) %>% 
+  select(state,partner_code,partner_profil_oracle,size_of_the_shop_m2,sales_person,key_accounts,relationship_quality)
+
+kable(arrange(sm_shops,desc(size_of_the_shop_m2)))
+
+# Webshops with larger than 0 shop size
+webshops<-df %>% 
+  filter(partner_profil_oracle=="Webshop",size_of_the_shop_m2>0) %>% 
+  select(state,partner_code,partner_profil_oracle,size_of_the_shop_m2)
+
+kable(arrange(webshops,desc(size_of_the_shop_m2)))
 
 ```
 
 
+```{r preprocessing}
+# Select variables to be used in clustering
+skim(df)
+vars=c("state","region","partner_profil_oracle","sales_this_year", "last_year_sales","gm_this_year", "number_of_months_when_ordered","population","size_of_the_shop_m2","stand_alone_shops","sales_channel_p_shop","sales_channel_p_webshop","sales_channel_p_distributor","sales_channel_p_gym","sales_channel_p_other","amazon_web","relationship_quality")
+data<-df %>% select(all_of(vars))
+
+
+# Preprocess data
+# Factors to Numeric
+to_numeric<- c("state","region","partner_profil_oracle","amazon_web","relationship_quality","stand_alone_shops")
+data <- data %>%  mutate_at(to_numeric, funs(as.numeric(.))
+)
+
+data_pca<-prcomp(data, scale. = TRUE)
+data_pca
+fviz_eig(data_pca)
+```
+
+```{r no_clusters, results="hide"}
+# Get number of clusters by gap index
+nb <- NbClust(df_arr, method = "kmeans",
+              min.nc = 2, max.nc = 10, index = "gap")
+message("Best number of clusters based on gap index is: ",nb$Best.nc[1])
+```
+
+```{r clustering}
+km <- kmeans(data, centers = 3)
+km
+data_wc <- cbind(data,data.table("cluster" = factor(km$cluster)))
+
+```
 
