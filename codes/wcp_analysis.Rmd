@@ -127,9 +127,9 @@ df_charts<-filter(df,gm_this_year<10^6)
 
 # Group 1 | Business Perfomance ()
 describe(df$gm_this_year)
-gm<-ggplot(df_charts, aes(x = gm_this_year)) + 
+gm<-ggplot(df_charts, aes(x = gm_this_year/10^3)) + 
   geom_histogram(fill=color[1]) + 
-  labs(title = "Distribution of Gross Margin", x= "Gross Margin", y="# partners")
+  labs(title = "Distribution of Gross Margin", x= "Gross Margin (K$)", y="# partners")
 
 describe(df$gm_this_year)
 sales<-ggplot(df_charts, aes(x = sales_this_year/10^3)) + 
@@ -138,7 +138,10 @@ sales<-ggplot(df_charts, aes(x = sales_this_year/10^3)) +
 
 gm_sales_sct<-ggplot(df_charts, aes(y = gm_this_year/10^3, x = sales_this_year/10^3)) + 
   geom_point(color=color[1]) + 
-  labs(title = "Distribution of Sales", x= "Sales (K$)", y="Gross Margin")
+  geom_smooth(method = "lm",formula = y ~ x, color=color[2]) + 
+  labs(title = "Pattern of association between GM and Sales", x= "Sales (K$)", y="Gross Margin")
+
+bp_grid <- plot_grid(gm,sales,gm_sales_sct, nrow = 2, ncol = 2)
 
 # Group 2 | Locational
 
@@ -214,13 +217,28 @@ fviz_gap_stat(gap_stat, linecolor = "steelblue", maxSE = list(method =
 
 ```{r clustering}
 set.seed(20210226)
-km <- kmeans(data_pca, centers = 2)
-km$tot.withinss
-
-set.seed(20210226)
 km <- kmeans(data, centers = 2)
 km$tot.withinss
 
-data_wc <- cbind(data,data.table("cluster" = factor(km$cluster)))
+set.seed(20210226)
+km_pca <- kmeans(data_pca, centers = 2)
+km_pca$tot.withinss
+
+data_w_clusters <- cbind(df_arr, 
+                         data.frame("cluster" = factor(km$cluster)))
+
+centers <- data.frame(km$centers)
+# str(centers)
+centers <- centers %>% mutate(cluster=factor("center", levels = c(1, 2, 3, "center")))
+
+data_w_clusters_centers <- rbind(data_w_clusters, centers)
+ggplot(data_w_clusters_centers, 
+       aes(x = UrbanPop, 
+           y = Murder, 
+           color = cluster,
+           size = ifelse(cluster == "center", 2, 1))) + 
+  geom_point() +
+  scale_size(guide = 'none')+
+  labs(title="States by Murder and Urban Population", caption = "(Variables are scaled)")
 ```
 
