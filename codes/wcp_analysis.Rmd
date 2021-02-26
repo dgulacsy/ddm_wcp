@@ -138,27 +138,34 @@ kable(arrange(webshops,desc(size_of_the_shop_m2)))
 ```
 
 
-```{r preprocessing}
+```{r preprocessing_0}
 # Select variables to be used in clustering
 skim(df)
 vars=c("state","region","partner_profil_oracle","sales_this_year", "last_year_sales","gm_this_year", "number_of_months_when_ordered","population","size_of_the_shop_m2","stand_alone_shops","sales_channel_p_shop","sales_channel_p_webshop","sales_channel_p_distributor","sales_channel_p_gym","sales_channel_p_other","amazon_web","relationship_quality")
 data<-df %>% select(all_of(vars))
+```
 
 
-# Preprocess data
+```{r preprocessing_1}
+# Preprocess data with PCA & scaling -------
 # Factors to Numeric
 to_numeric<- c("state","region","partner_profil_oracle","amazon_web","relationship_quality","stand_alone_shops")
-data <- data %>%  mutate_at(to_numeric, funs(as.numeric(.))
+data_pca <- data_pca %>%  mutate_at(to_numeric, funs(as.numeric(.))
 )
 
-data_pca<-prcomp(data, scale. = TRUE)
-data_pca
+data_pca<-prcomp(data_pca, scale. = TRUE)
 fviz_eig(data_pca)
+
+```
+
+```{r preprocessing_2}
+# Preprocess data only with scaling
+data<-as.data.frame(scale(data))
 ```
 
 ```{r no_clusters, results="hide"}
 # Get number of clusters by gap index
-nb <- NbClust(df_arr, method = "kmeans",
+nb <- NbClust(data, method = "kmeans",
               min.nc = 2, max.nc = 10, index = "gap")
 message("Best number of clusters based on gap index is: ",nb$Best.nc[1])
 ```
