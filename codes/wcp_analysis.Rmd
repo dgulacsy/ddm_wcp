@@ -95,6 +95,13 @@ df$amazon_web <- as.factor(df$amazon_web)
 df <- df %>% 
   mutate(size_of_the_shop_m2 = ifelse((partner_profil_oracle=="Webshop" & is.na(size_of_the_shop_m2)),0,size_of_the_shop_m2))
 
+# Calculate new variables
+df <- df %>%  mutate(
+  sales_yoy = sales_this_year/last_year_sales-1,
+  protein_sales_share = protein_sales_this_year/sales_this_year,
+  protein_gm_share = protein_gm_this_year/gm_this_year
+)
+
 # Remove observations with NA
 df <- na.omit(df)
 ```
@@ -113,11 +120,34 @@ df %>%
   theme_bw() + 
   scale_fill_identity()
 
-# Plots
-ggplot(df, aes(x = gm_this_year)) + 
+# Charts -------
+
+# Exclude the biggest customer to make plots better-looking
+df_charts<-filter(df,gm_this_year<10^6)
+
+# Group 1 | Business Perfomance ()
+describe(df$gm_this_year)
+gm<-ggplot(df_charts, aes(x = gm_this_year)) + 
   geom_histogram(fill=color[1]) + 
   labs(title = "Distribution of Gross Margin", x= "Gross Margin", y="# partners")
+
 describe(df$gm_this_year)
+sales<-ggplot(df_charts, aes(x = sales_this_year/10^3)) + 
+  geom_histogram(fill=color[1]) + 
+  labs(title = "Distribution of Sales", x= "Sales (K$)", y="# partners")
+
+gm_sales_sct<-ggplot(df_charts, aes(y = gm_this_year/10^3, x = sales_this_year/10^3)) + 
+  geom_point(color=color[1]) + 
+  labs(title = "Distribution of Sales", x= "Sales (K$)", y="Gross Margin")
+
+# Group 2 | Locational
+
+
+# Group 3 | Shop Characteristics
+
+
+# Group 4 | Other
+
 
 # Issues in the data that raise questions ---------
 
@@ -145,16 +175,18 @@ vars=c("state","region","partner_profil_oracle","sales_this_year", "last_year_sa
 data<-df %>% select(all_of(vars))
 ```
 
-
 ```{r preprocessing_1}
 # Preprocess data with PCA & scaling -------
 # Factors to Numeric
 to_numeric<- c("state","region","partner_profil_oracle","amazon_web","relationship_quality","stand_alone_shops")
-data_pca <- data_pca %>%  mutate_at(to_numeric, funs(as.numeric(.))
+
+data_pca <- data %>%  mutate_at(to_numeric, funs(as.numeric(.))
 )
 
-data_pca<-prcomp(data_pca, scale. = TRUE)
-fviz_eig(data_pca)
+pca<-prcomp(data_pca, scale. = TRUE)
+fviz_eig(pca)
+
+data_pca<-data_pca$x
 
 ```
 
@@ -168,12 +200,27 @@ data<-as.data.frame(scale(data))
 nb <- NbClust(data, method = "kmeans",
               min.nc = 2, max.nc = 10, index = "gap")
 message("Best number of clusters based on gap index is: ",nb$Best.nc[1])
+
+fviz_nbclust(data, FUNcluster = NULL, method = c("silhouette", "wss",
+  "gap_stat"), diss = NULL, k.max = 10, nboot = 100,
+  verbose = interactive(), barfill = "steelblue",
+  barcolor = "steelblue", linecolor = "steelblue",
+  print.summary = TRUE)
+
+fviz_gap_stat(gap_stat, linecolor = "steelblue", maxSE = list(method =
+  "firstSEmax", SE.factor = 1))
+
 ```
 
 ```{r clustering}
-km <- kmeans(data, centers = 3)
-km
-data_wc <- cbind(data,data.table("cluster" = factor(km$cluster)))
+set.seed(20210226)
+km <- kmeans(data_pca, centers = 2)
+km$tot.withinss
 
+set.seed(20210226)
+km <- kmeans(data, centers = 2)
+km$tot.withinss
+
+data_wc <- cbind(data,data.table("cluster" = factor(km$cluster)))
 ```
 
