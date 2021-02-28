@@ -25,6 +25,7 @@ library(tidyverse)
 library(Hmisc)
 library(skimr)
 library(janitor)
+library(dplyr)
 # Viz
 library(ggplot2)
 library(cowplot)
@@ -49,13 +50,42 @@ pvars<-names(select(df,matches("*._p_")))
 df <- df %>%  mutate_at(pvars, funs(as.numeric(gsub("%","",.))/100)
 )
 
+# Numeric to character
+df$partner_code <- as.character(df$partner_code)
+
+# replace - values with NA?
+df[amazon_web == "-"] <- NA
+
+# how do we want to treat NAs?
+to_filter <- sapply(df, function(x) sum(is.na(x)))
+to_filter[to_filter > 0]
+
+# drop amazon_web?
+drop <- c("amazon_web")
+df <- df[ , !(names(df) %in% drop)]
+
+
+# construct data
+
+df<-tbl_df(df) #Make it into a tbl class
+#Define the new columns
+df <- df %>%
+  mutate(protein_sales_ratio=protein_sales_this_year/sales_this_year)
+
+df <- df %>%
+  mutate(protein_gm_ratio=protein_gm_this_year/gm_this_year)
+
+df$sales_delta <- df$sales_this_year - df$last_year_sales
+
+# scaling?
+# df$ <- df$ /10^2
+
+
+
 # Factors
 factors<- c("state","sales_person","partner_profil_oracle","key_accounts","amazon_web","relationship_quality","stand_alone_shops","active_partner")
 df <- df %>%  mutate_at(factors, funs(as.factor(.))
 )
-
-# Numeric to character
-df$partner_code <- as.character(df$partner_code)
 
 ```
 
@@ -64,7 +94,7 @@ df$partner_code <- as.character(df$partner_code)
 ```{r eda}
 # EDA -------
 # Histograms
-df %>%
+a1 <- df %>%
   keep(is.numeric) %>% 
   gather() %>% 
   ggplot(aes(value)) +
@@ -74,6 +104,251 @@ df %>%
   scale_fill_identity()
 
 
+a1
 
+```
+```{r}
+sum_stat <- function( df , var_names , stats , num_obs = TRUE ){
+  k <- length( var_names )
+  built_in_stat <- c('mean','median','mode','min','max','1st_qu.','3rd_qu',
+                     'sd','var','range','iqr')
+  do_stat <- intersect( stats , built_in_stat )
+  if ( is_empty(do_stat) ){
+    stop('Error, no such statistics is implemented! Choose from: mean,median,min,max,1st_qu.,3rd_qu')
+  }
+  # By default add the number of missing observations and the number of used observations
+  m <- length( do_stat )
+  if ( num_obs ){
+    do_stat <- c( do_stat , "# missing", "# used obs")
+  }
+  # Create tibble for output
+  sum_stat <- as_tibble( matrix( 0 , nrow = m , ncol = k ) , name_repair = "unique" )
+  for ( j in 1 : k ) {
+    # Get the data for the j'th variable
+    var_j <- df[ var_names[ j ] ]
+    if ( num_obs ){
+      # Count the missing values and add to statistics
+      sum_stat[ m + 1 , j ] <- as.integer( sum( is.na( var_j ) ) )
+      # Count observations used
+      sum_stat[ m + 2 , j ] <- as.integer( sum( !is.na( var_j ) ) )
+    }
+    # Remove missing values
+    var_j <- var_j[ !is.na( var_j ) ]
+    # Name the sum_stat's column
+    colnames( sum_stat )[ j ] <- var_names[ j ]
+    for ( i in 1 : m ) {
+      # Central tendency
+      if (do_stat[ i ] == "mean"){
+        sum_stat[[i,j]] <- mean( var_j )
+      } else if (do_stat[ i ] == "median"){
+        sum_stat[i,j] <- median( var_j )
+      } else if (do_stat[ i ] == "mode"){
+        sum_stat[i,j] <- mode( var_j )
+      } 
+      # Support
+      else if (do_stat[ i ] == "min"){
+        sum_stat[i,j] <- min( var_j )
+      } else if (do_stat[ i ] == "max"){
+        sum_stat[i,j] <- max( var_j )
+      } 
+      # Quartiles
+      else if (do_stat[ i ] == "1st_qu."){
+        sum_stat[i,j] <- quantile( var_j , probs = 0.25 )
+      } else if (do_stat[ i ] == "3rd_qu"){
+        sum_stat[i,j] <- quantile( var_j , probs = 0.75)
+      } 
+      # Dispersion
+      else if (do_stat[ i ] == "sd"){
+        sum_stat[i,j] <- sd( var_j )
+      } else if (do_stat[ i ] == "var"){
+        sum_stat[i,j] <- var( var_j )
+      } else if (do_stat[ i ] == "range"){
+        sum_stat[i,j] <- max( var_j ) - min( var_j )
+      } else if (do_stat[ i ] == "iqr"){
+        sum_stat[i,j] <- quantile( var_j , probs = 0.75) - quantile( var_j , probs = 0.25)
+      } 
+    }
+  }
+  # Finally add a column which contains the requested statistics and relocate to first position
+  sum_stat <- sum_stat %>% 
+    mutate( statistics = do_stat ) %>% 
+    relocate( statistics )
+  
+  return( sum_stat )
+}
+```
+
+
+```{r}
+dstats<-sum_stat(df, df %>%
+           keep(is.numeric) %>% 
+           colnames(),
+         c('mean','median','min','max','1st_qu.','3rd_qu','sd','range'),
+         num_obs = F
+         )
+
+dstats
+```
+
+```{r}
+# histogram for gm this year
+ggplot( data = df , aes( x = gm_this_year ) ) +
+  geom_histogram( fill = 'dodgerblue3', bins = 25 ) +
+  labs( x='\n Gross margin', y='Absolute Frequency \n',
+        title= 'Distribution of current year gross margin') +
+  theme_light() +
+  theme( panel.grid.minor.x = element_blank(), 
+         plot.title = element_text( size = 12, face = "bold", hjust = 0.5 ) )
+```
+```{r}
+df$ln_gm_this_year <- log(df$gm_this_year)
+```
+
+```{r}
+# histogram for gm this year
+ggplot( data = df , aes( x = ln_gm_this_year ) ) +
+  geom_histogram( fill = 'dodgerblue3', bins = 25 ) +
+  labs( x='\n Log gross margin', y='Absolute Frequency \n',
+        title= 'Distribution of current year ln gross margin') +
+  theme_light() +
+  theme( panel.grid.minor.x = element_blank(), 
+         plot.title = element_text( size = 12, face = "bold", hjust = 0.5 ) )
+```
+```{r}
+# histogram for sales this year
+ggplot( data = df , aes( x = sales_this_year ) ) +
+  geom_histogram( fill = 'dodgerblue3', bins = 25 ) +
+  labs( x='\n Sales this year', y='Absolute Frequency \n',
+        title= 'Distribution of current year sales') +
+  theme_light() +
+  theme( panel.grid.minor.x = element_blank(), 
+         plot.title = element_text( size = 12, face = "bold", hjust = 0.5 ) )
+```
+```{r}
+df$ln_sales_this_year <- log(df$sales_this_year)
+```
+
+```{r}
+# histogram for sales this year
+ggplot( data = df , aes( x = ln_sales_this_year ) ) +
+  geom_histogram( fill = 'dodgerblue3', bins = 25 ) +
+  labs( x='\n Ln sales this year', y='Absolute Frequency \n',
+        title= 'Distribution of current year ln sales') +
+  theme_light() +
+  theme( panel.grid.minor.x = element_blank(), 
+         plot.title = element_text( size = 12, face = "bold", hjust = 0.5 ) )
+```
+```{r}
+# histogram for sales last year
+ggplot( data = df , aes( x = last_year_sales ) ) +
+  geom_histogram( fill = 'dodgerblue3', bins = 25 ) +
+  labs( x='\n Sales last year', y='Absolute Frequency \n',
+        title= 'Distribution of last year sales') +
+  theme_light() +
+  theme( panel.grid.minor.x = element_blank(), 
+         plot.title = element_text( size = 12, face = "bold", hjust = 0.5 ) )
+```
+```{r}
+df$ln_last_year_sales <- log(df$last_year_sales)
+```
+
+
+```{r}
+# histogram for sales last year
+ggplot( data = df , aes( x = ln_last_year_sales ) ) +
+  geom_histogram( fill = 'dodgerblue3', bins = 25 ) +
+  labs( x='\n Sales last year', y='Absolute Frequency \n',
+        title= 'Distribution of last year sales') +
+  theme_light() +
+  theme( panel.grid.minor.x = element_blank(), 
+         plot.title = element_text( size = 12, face = "bold", hjust = 0.5 ) )
+```
+```{r}
+df$ln_protein_gm_this_year <- log(df$protein_gm_this_year)
+df$ln_protein_sales_this_year <- log(df$protein_sales_this_year)
+```
+
+```{r}
+ggplot( df , aes(x = confirmed, y = death)) +
+  geom_point() +
+  geom_smooth(method="loess")+
+  labs(x = "Number of confirmed cases",y = "Number of deaths")
+```
+
+```{r}
+library(GGally)
+ggcorr(df)
+```
+
+```{r}
+ggplot( df , aes(x = ln_last_year_sales, y = ln_gm_this_year)) +
+  geom_point() +
+  geom_smooth(method="loess")+
+  labs(x = "Log last year sales",y = "Log gross margin this year")
+```
+
+
+```{r}
+ggplot( df , aes(x = confirmed, y = death)) +
+  geom_point() +
+  geom_smooth(method="loess")+
+  labs(x = "Number of confirmed cases",y = "Number of deaths")
+```
+
+```{r}
+ggplot(df , aes(x = sales_this_year, y = protein_gm_this_year)) +
+  geom_point() +
+  geom_point(data=df, colour="red")+
+  theme_bw() +
+  geom_smooth(method="loess" , formula = y ~ x ) +
+  labs( title = "Relationship between this year's sales and protein gross margin",
+        y = "Protein GM this year",
+        x = "Sales this year")
+```
+```{r}
+ggplot(df, aes(x = key_accounts, y = ln_protein_gm_this_year)) +
+  geom_point() +
+  theme_bw() +
+  geom_smooth(method="loess" , formula = y ~ x )+
+  labs( title = "Pattern of association between protein gross margin this year and key accounts",
+        y = "Ln protein gross margin this year",
+        x = "Key account (0-no, 1-yes)")
+```
+```{r}
+ggplot(df, aes(x = sales_person, y = ln_protein_gm_this_year)) +
+  geom_point() +
+  theme_bw() +
+  geom_smooth(method="loess" , formula = y ~ x )+
+  labs( title = "Pattern of association between protein gross margin this year and sales persons",
+        y = "Protein gross margin this year",
+        x = "Sales person")
+```
+
+```{r}
+ggplot(df, aes(x = amazon_web, y = ln_protein_gm_this_year)) +
+  geom_point() +
+  theme_bw() +
+  geom_smooth(method="loess" , formula = y ~ x )+
+  labs( title = "Pattern of association between protein gross margin this year and Amazon web",
+        y = "Protein gross margin this year",
+        x = "Amazon web")
+```
+```{r}
+ggplot(df, aes(x = partner_profil_oracle, y = ln_protein_gm_this_year)) +
+  geom_point() +
+  theme_bw() +
+  geom_smooth(method="loess" , formula = y ~ x )+
+  labs( title = "Pattern of association between protein gross margin this year and partner profile",
+        y = "Protein gross margin this year",
+        x = "Partner's profile")
+```
+```{r}
+ggplot(df, aes(x = partner_profil_oracle, y = ln_sales_this_year)) +
+  geom_point() +
+  theme_bw() +
+  geom_smooth(method="loess" , formula = y ~ x )+
+  labs( title = "Pattern of association between log sales this year and partner profile",
+        y = "Log sales this year",
+        x = "Partner's profile")
 ```
 
