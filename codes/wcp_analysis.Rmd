@@ -30,9 +30,15 @@ library(dplyr)
 library(ggplot2)
 library(cowplot)
 library(knitr)
-```
+# Modeling
+library(NbClust)
+library(factoextra)
 
-#
+# Set visuals
+theme_set(theme_minimal())
+color=c("slateblue","violetred","gray")
+
+```
 
 ```{r dataimp}
 #import data
@@ -40,8 +46,10 @@ df<-read_csv("data/wcp_raw_trans_data.csv") %>%  clean_names()
 
 # Look at the data
 skim(df)
+```
 
-# Convert to appropriate data types
+```{r data_type_conversion}
+# Convert to appropriate data types -------
 # Remove thousand seps
 df$sales_this_year <- as.numeric(gsub(",","",df$sales_this_year))
 
@@ -83,30 +91,16 @@ df$sales_delta <- df$sales_this_year - df$last_year_sales
 
 
 # Factors
-factors<- c("state","sales_person","partner_profil_oracle","key_accounts","amazon_web","relationship_quality","stand_alone_shops","active_partner")
+factors<- c("state","region","sales_person","partner_profil_oracle","key_accounts","amazon_web","relationship_quality","stand_alone_shops","active_partner")
 df <- df %>%  mutate_at(factors, funs(as.factor(.))
 )
 
 ```
 
+
 <!-- ![](pic) -->
 
-```{r eda}
-# EDA -------
-# Histograms
-a1 <- df %>%
-  keep(is.numeric) %>% 
-  gather() %>% 
-  ggplot(aes(value)) +
-  facet_wrap(~key, scales = "free") +
-  geom_histogram()+
-  theme_bw() + 
-  scale_fill_identity()
 
-
-a1
-
-```
 ```{r}
 sum_stat <- function( df , var_names , stats , num_obs = TRUE ){
   k <- length( var_names )
@@ -190,6 +184,7 @@ dstats<-sum_stat(df, df %>%
 dstats
 ```
 
+
 ```{r}
 # histogram for gm this year
 ggplot( data = df , aes( x = gm_this_year ) ) +
@@ -200,6 +195,7 @@ ggplot( data = df , aes( x = gm_this_year ) ) +
   theme( panel.grid.minor.x = element_blank(), 
          plot.title = element_text( size = 12, face = "bold", hjust = 0.5 ) )
 ```
+
 ```{r}
 df$ln_gm_this_year <- log(df$gm_this_year)
 ```
@@ -214,6 +210,7 @@ ggplot( data = df , aes( x = ln_gm_this_year ) ) +
   theme( panel.grid.minor.x = element_blank(), 
          plot.title = element_text( size = 12, face = "bold", hjust = 0.5 ) )
 ```
+
 ```{r}
 # histogram for sales this year
 ggplot( data = df , aes( x = sales_this_year ) ) +
@@ -224,6 +221,7 @@ ggplot( data = df , aes( x = sales_this_year ) ) +
   theme( panel.grid.minor.x = element_blank(), 
          plot.title = element_text( size = 12, face = "bold", hjust = 0.5 ) )
 ```
+
 ```{r}
 df$ln_sales_this_year <- log(df$sales_this_year)
 ```
@@ -238,6 +236,7 @@ ggplot( data = df , aes( x = ln_sales_this_year ) ) +
   theme( panel.grid.minor.x = element_blank(), 
          plot.title = element_text( size = 12, face = "bold", hjust = 0.5 ) )
 ```
+
 ```{r}
 # histogram for sales last year
 ggplot( data = df , aes( x = last_year_sales ) ) +
@@ -248,6 +247,7 @@ ggplot( data = df , aes( x = last_year_sales ) ) +
   theme( panel.grid.minor.x = element_blank(), 
          plot.title = element_text( size = 12, face = "bold", hjust = 0.5 ) )
 ```
+
 ```{r}
 df$ln_last_year_sales <- log(df$last_year_sales)
 ```
@@ -263,6 +263,7 @@ ggplot( data = df , aes( x = ln_last_year_sales ) ) +
   theme( panel.grid.minor.x = element_blank(), 
          plot.title = element_text( size = 12, face = "bold", hjust = 0.5 ) )
 ```
+
 ```{r}
 df$ln_protein_gm_this_year <- log(df$protein_gm_this_year)
 df$ln_protein_sales_this_year <- log(df$protein_sales_this_year)
@@ -290,6 +291,7 @@ ggplot(df , aes(x = sales_this_year, y = protein_gm_this_year)) +
         y = "Protein GM this year",
         x = "Sales this year")
 ```
+
 ```{r}
 ggplot(df, aes(x = key_accounts, y = ln_protein_gm_this_year)) +
   geom_point() +
@@ -299,6 +301,7 @@ ggplot(df, aes(x = key_accounts, y = ln_protein_gm_this_year)) +
         y = "Ln protein gross margin this year",
         x = "Key account (0-no, 1-yes)")
 ```
+
 ```{r}
 ggplot(df, aes(x = sales_person, y = ln_protein_gm_this_year)) +
   geom_point() +
@@ -318,6 +321,7 @@ ggplot(df, aes(x = amazon_web, y = ln_protein_gm_this_year)) +
         y = "Protein gross margin this year",
         x = "Amazon web")
 ```
+
 ```{r}
 ggplot(df, aes(x = partner_profil_oracle, y = ln_protein_gm_this_year)) +
   geom_point() +
@@ -327,6 +331,7 @@ ggplot(df, aes(x = partner_profil_oracle, y = ln_protein_gm_this_year)) +
         y = "Protein gross margin this year",
         x = "Partner's profile")
 ```
+
 ```{r}
 ggplot(df, aes(x = partner_profil_oracle, y = ln_sales_this_year)) +
   geom_point() +
@@ -335,5 +340,223 @@ ggplot(df, aes(x = partner_profil_oracle, y = ln_sales_this_year)) +
   labs( title = "Pattern of association between log sales this year and partner profile",
         y = "Log sales this year",
         x = "Partner's profile")
+
+p1<-ggplot(agg_sales_pot)+
+  geom_bar(aes(x= cluster,y=avg_gm_this_year), fill=color[1], stat = "identity")+
+  labs(x="Customer Segment",y="Avg. Gross Margin")
+
+p2<-ggplot(agg_sales_pot)+
+  geom_point(aes(x= cluster,y=agg_sales_yoy),color=color[2], size=4)+
+  labs(x="Customer Segment",y="Change in Sales")+
+  expand_limits(y = 0)
+  
+stats_grid<-plot_grid(p1,p2,nrow=1,ncol=2)
+stats_grid
+
 ```
+
+
+
+```{r eda}
+# EDA -------
+# Histograms
+a1 <- df %>%
+  keep(is.numeric) %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+  facet_wrap(~key, scales = "free") +
+  geom_histogram()+
+  theme_bw() + 
+  scale_fill_identity()
+
+a1
+
+# Charts -------
+
+# Exclude the biggest customer to make plots better-looking
+df_charts<-filter(df,gm_this_year<10^6)
+
+# Group 1 | Business Perfomance ()
+describe(df$gm_this_year)
+gm<-ggplot(df_charts, aes(x = gm_this_year/10^3)) + 
+  geom_histogram(fill=color[1]) + 
+  labs(subtitle = "Distribution of Gross Margin", x= "Gross Margin (K$)", y="# partners")
+
+describe(df$gm_this_year)
+sales<-ggplot(df_charts, aes(x = sales_this_year/10^3)) + 
+  geom_histogram(fill=color[1]) + 
+  labs(subtitle = "Distribution of Sales", x= "Sales (K$)", y="# partners")
+
+gm_sales_sct<-ggplot(df_charts, aes(y = gm_this_year/10^3, x = sales_this_year/10^3)) + 
+  geom_point(color=color[1]) + 
+  geom_smooth(method = "lm",formula = y ~ x, color=color[2]) + 
+  labs(title = "Pattern of association between GM and Sales", x= "Sales (K$)", y="Gross Margin (K$)")
+
+bp_grid <- plot_grid(gm,sales, nrow = 1, ncol = 2)
+bp_grid
+
+# Group 2 | Locational
+
+
+# Group 3 | Shop Characteristics
+
+
+# Group 4 | Other
+
+
+# Issues in the data that raise questions ---------
+
+# Physical shops with less than 5 sqm size or more than 1000 sqm
+sm_shops<- df %>% 
+  filter(partner_profil_oracle!="Webshop", (size_of_the_shop_m2<5 | size_of_the_shop_m2>1000)) %>% 
+  select(state,partner_code,partner_profil_oracle,size_of_the_shop_m2,sales_person,key_accounts,relationship_quality)
+
+kable(arrange(sm_shops,desc(size_of_the_shop_m2)))
+
+# Webshops with larger than 0 shop size
+webshops<-df %>% 
+  filter(partner_profil_oracle=="Webshop",size_of_the_shop_m2>0) %>% 
+  select(state,partner_code,partner_profil_oracle,size_of_the_shop_m2)
+
+kable(arrange(webshops,desc(size_of_the_shop_m2)))
+```
+
+
+```{r sample design}
+# Filter for active partners -----
+df <- df %>% filter(active_partner==1) %>% 
+  select(-active_partner)
+
+# Impute variables ----
+# Impute Population based on city code
+imp_pop<- df %>% 
+  group_by(city_village) %>%
+  summarise(
+    avg_pop = mean(population, na.rm = T)
+  )
+
+for (i in 1:dim(df)[1]){
+  if(is.na(df[i,"population"])){
+    miss_pop_city <- as.character(df[i,"city_village"])
+    df[i,"population"]<-imp_pop[miss_pop_city,"avg_pop"]
+  }
+}
+
+# amazon_web replace NAs and "-" with zero
+df <- df %>% mutate(amazon_web=ifelse(is.na(amazon_web),0,1))
+df$amazon_web <- as.factor(df$amazon_web)
+
+# Impute 0 for NA shop size in case of webshops
+df <- df %>% 
+  mutate(size_of_the_shop_m2 = ifelse((partner_profil_oracle=="Webshop" & is.na(size_of_the_shop_m2)),0,size_of_the_shop_m2))
+
+# Calculate new variables
+df <- df %>%  mutate(
+  sales_yoy = sales_this_year/last_year_sales-1,
+  protein_sales_share = protein_sales_this_year/sales_this_year,
+  protein_gm_share = protein_gm_this_year/gm_this_year
+)
+
+# Remove observations with NA
+df <- na.omit(df)
+```
+
+```{r preprocessing_0}
+# Select variables to be used in clustering
+skim(df)
+vars=c("partner_code","state","region","partner_profil_oracle","sales_this_year", "last_year_sales","gm_this_year", "number_of_months_when_ordered","population","size_of_the_shop_m2","stand_alone_shops","sales_channel_p_shop","sales_channel_p_webshop","sales_channel_p_distributor","sales_channel_p_gym","sales_channel_p_other","amazon_web","relationship_quality")
+data_partner<-df %>% select(all_of(vars))
+data <- select(data_partner,-partner_code)
+```
+
+```{r preprocessing_1}
+# Preprocess data with PCA & scaling -------
+# Factors to Numeric
+to_numeric<- c("state","region","partner_profil_oracle","amazon_web","relationship_quality","stand_alone_shops")
+
+data <- data %>% mutate_at(to_numeric, funs(as.numeric(.))
+)
+
+pca<-prcomp(data, scale. = TRUE)
+fviz_eig(pca)
+
+data_pca<-pca$x
+```
+
+```{r preprocessing_2}
+# Preprocess data only with scaling
+data<-as.data.frame(scale(data))
+```
+
+```{r no_clusters, results="hide"}
+# Get number of clusters by gap index
+nb <- NbClust(data, method = "kmeans",
+              min.nc = 2, max.nc = 10, index = "gap")
+message("Best number of clusters for scaled dataset based on gap index is: ",nb$Best.nc[1])
+
+# Get number of clusters by gap index
+nb <- NbClust(data_pca, method = "kmeans",
+              min.nc = 2, max.nc = 10, index = "gap")
+message("Best number of clusters for PCA dataset based on gap index is: ",nb$Best.nc[1])
+
+fviz_nbclust(data, FUNcluster = kmeans, method = c("gap_stat"), diss = NULL, k.max = 10, nboot = 100,
+  verbose = interactive(), barfill = "steelblue",
+  barcolor = "steelblue", linecolor = "steelblue",
+  print.summary = TRUE)
+
+```
+
+```{r clustering}
+set.seed(20210226)
+km <- kmeans(data, centers = 2)
+km$tot.withinss
+
+set.seed(20210226)
+km_pca <- kmeans(data_pca, centers = 2)
+km_pca$tot.withinss
+
+
+# Clustering Visualized by sales_this_year and gm_this_year
+data_wc <- cbind(data, 
+                         data.frame("cluster" = factor(km$cluster)))
+
+centers <- data.frame(km$centers) %>% 
+  mutate(cluster=factor("center", levels = c(1, 2, "center")))
+
+pca_loads<-as.data.frame(abs(sort(-abs(pca$rotation[,"PC1"]))[1:2]))
+names(pca_loads)<-"PCA Loads"
+
+data_wcc <- rbind(data_wc, centers)
+
+ggplot(data_wcc, 
+       aes(x = sales_this_year, 
+           y = gm_this_year, 
+           color = cluster,
+           size = ifelse(cluster == "center", 2, 1))) + 
+  geom_point() +
+  scale_size(guide = 'none')+
+  labs(title="Partners by Sales and Gross Margin", y="Sales", x="Gross Margin", caption = "(Variables are scaled)")
+
+# Clustering Visualized by PC1 and PC2
+data_pca <- as.data.frame(cbind(data_pca,cluster=data_wc$cluster))
+ggplot(data_pca,aes(x=PC2,y=PC1,color=as.factor(cluster)))+
+  geom_point()+
+  labs(title="Partners by first and second principle components")
+```
+
+```{r highest_sales_potential}
+data_wc<-cbind(data_wc,partner_code=data_partner$partner_code)
+sales_pot<-left_join(df,select(data_wc,c("cluster","partner_code")), by="partner_code")
+agg_sales_pot<-sales_pot %>% 
+  group_by(cluster) %>% 
+  summarise(
+    avg_gm_this_year = mean(gm_this_year),
+    agg_sales_yoy = sum(sales_this_year)/sum(last_year_sales)-1
+  )
+
+# agg_sales_pot <- agg_sales_pot %>% gather(metric, value, -c("cluster"))
+# reshape(agg_sales_pot, idvar = "cluster", varying = list(names(agg_sales_pot)[2:3]),timevar = "metric",v.names = "Value", direction = "long")
+
+```
+
 
