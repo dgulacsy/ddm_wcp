@@ -30,6 +30,7 @@ library(dplyr)
 library(ggplot2)
 library(cowplot)
 library(knitr)
+library(GGally)
 # Modeling
 library(NbClust)
 library(factoextra)
@@ -40,68 +41,7 @@ color=c("slateblue","violetred","gray")
 
 ```
 
-```{r dataimp}
-#import data
-df<-read_csv("data/wcp_raw_trans_data.csv") %>%  clean_names()
-
-# Look at the data
-skim(df)
-```
-
-```{r data_type_conversion}
-# Convert to appropriate data types -------
-# Remove thousand seps
-df$sales_this_year <- as.numeric(gsub(",","",df$sales_this_year))
-
-# Percentage to number
-pvars<-names(select(df,matches("*._p_")))
-df <- df %>%  mutate_at(pvars, funs(as.numeric(gsub("%","",.))/100)
-)
-
-# Numeric to character
-df$partner_code <- as.character(df$partner_code)
-
-# replace - values with NA?
-df[amazon_web == "-"] <- NA
-
-# how do we want to treat NAs?
-to_filter <- sapply(df, function(x) sum(is.na(x)))
-to_filter[to_filter > 0]
-
-# drop amazon_web?
-drop <- c("amazon_web")
-df <- df[ , !(names(df) %in% drop)]
-
-
-# construct data
-
-df<-tbl_df(df) #Make it into a tbl class
-#Define the new columns
-df <- df %>%
-  mutate(protein_sales_ratio=protein_sales_this_year/sales_this_year)
-
-df <- df %>%
-  mutate(protein_gm_ratio=protein_gm_this_year/gm_this_year)
-
-df$sales_delta <- df$sales_this_year - df$last_year_sales
-
-# scaling?
-# df$ <- df$ /10^2
-
-
-
-# Factors
-factors<- c("state","region","sales_person","partner_profil_oracle","key_accounts","amazon_web","relationship_quality","stand_alone_shops","active_partner")
-df <- df %>%  mutate_at(factors, funs(as.factor(.))
-)
-
-```
-
-
-<!-- ![](pic) -->
-
-
-```{r}
+```{r import_sum_stat}
 sum_stat <- function( df , var_names , stats , num_obs = TRUE ){
   k <- length( var_names )
   built_in_stat <- c('mean','median','mode','min','max','1st_qu.','3rd_qu',
@@ -172,8 +112,81 @@ sum_stat <- function( df , var_names , stats , num_obs = TRUE ){
 }
 ```
 
+```{r dataimp}
+#import data
+df<-read_csv("data/wcp_raw_trans_data.csv") %>%  clean_names()
 
-```{r}
+# Look at the data
+skim(df)
+```
+
+```{r data_type_conversion}
+# Convert to appropriate data types -------
+# Remove thousand seps
+df$sales_this_year <- as.numeric(gsub(",","",df$sales_this_year))
+
+# Percentage to number
+pvars<-names(select(df,matches("*._p_")))
+df <- df %>%  mutate_at(pvars, funs(as.numeric(gsub("%","",.))/100)
+)
+
+# Numeric to character
+df$partner_code <- as.character(df$partner_code)
+
+# how do we want to treat NAs?
+to_filter <- sapply(df, function(x) sum(is.na(x)))
+to_filter[to_filter > 0]
+
+# Factors
+factors<- c("state","region","sales_person","partner_profil_oracle","key_accounts","amazon_web","relationship_quality","stand_alone_shops","active_partner")
+df <- df %>%  mutate_at(factors, funs(as.factor(.))
+) 
+
+```
+
+```{r sample design}
+# Filter for active partners -----
+df <- df %>% filter(active_partner==1) %>% 
+  select(-active_partner)
+
+# Impute variables ----
+# Impute Population based on city code
+imp_pop<- df %>% 
+  group_by(city_village) %>%
+  summarise(
+    avg_pop = mean(population, na.rm = T)
+  )
+
+for (i in 1:dim(df)[1]){
+  if(is.na(df[i,"population"])){
+    miss_pop_city <- as.character(df[i,"city_village"])
+    df[i,"population"]<-imp_pop[miss_pop_city,"avg_pop"]
+  }
+}
+
+# amazon_web replace NAs and "-" with zero
+df <- df %>% mutate(amazon_web=ifelse(is.na(amazon_web),0,1))
+df$amazon_web <- as.factor(df$amazon_web)
+
+# Impute 0 for NA shop size in case of webshops
+df <- df %>% 
+  mutate(size_of_the_shop_m2 = ifelse((partner_profil_oracle=="Webshop" & is.na(size_of_the_shop_m2)),0,size_of_the_shop_m2))
+
+# Calculate new variables
+df <- df %>% mutate(
+  sales_delta <- sales_this_year - last_year_sales,
+  sales_yoy = ifelse(last_year_sales==0,NA,sales_this_year/last_year_sales-1),
+  protein_sales_share = protein_sales_this_year/sales_this_year,
+  protein_gm_share = protein_gm_this_year/gm_this_year
+)
+
+# Remove observations with NA
+df <- na.omit(df)
+```
+
+<!-- ![](pic) -->
+
+```{r summary_stats}
 dstats<-sum_stat(df, df %>%
            keep(is.numeric) %>% 
            colnames(),
@@ -270,7 +283,6 @@ df$ln_protein_sales_this_year <- log(df$protein_sales_this_year)
 ```
 
 ```{r}
-library(GGally)
 ggcorr(df)
 ```
 
@@ -332,28 +344,7 @@ ggplot(df, aes(x = partner_profil_oracle, y = ln_protein_gm_this_year)) +
         x = "Partner's profile")
 ```
 
-```{r}
-ggplot(df, aes(x = partner_profil_oracle, y = ln_sales_this_year)) +
-  geom_point() +
-  theme_bw() +
-  geom_smooth(method="loess" , formula = y ~ x )+
-  labs( title = "Pattern of association between log sales this year and partner profile",
-        y = "Log sales this year",
-        x = "Partner's profile")
 
-p1<-ggplot(agg_sales_pot)+
-  geom_bar(aes(x= cluster,y=avg_gm_this_year), fill=color[1], stat = "identity")+
-  labs(x="Customer Segment",y="Avg. Gross Margin")
-
-p2<-ggplot(agg_sales_pot)+
-  geom_point(aes(x= cluster,y=agg_sales_yoy),color=color[2], size=4)+
-  labs(x="Customer Segment",y="Change in Sales")+
-  expand_limits(y = 0)
-  
-stats_grid<-plot_grid(p1,p2,nrow=1,ncol=2)
-stats_grid
-
-```
 
 
 
@@ -421,45 +412,6 @@ webshops<-df %>%
 kable(arrange(webshops,desc(size_of_the_shop_m2)))
 ```
 
-
-```{r sample design}
-# Filter for active partners -----
-df <- df %>% filter(active_partner==1) %>% 
-  select(-active_partner)
-
-# Impute variables ----
-# Impute Population based on city code
-imp_pop<- df %>% 
-  group_by(city_village) %>%
-  summarise(
-    avg_pop = mean(population, na.rm = T)
-  )
-
-for (i in 1:dim(df)[1]){
-  if(is.na(df[i,"population"])){
-    miss_pop_city <- as.character(df[i,"city_village"])
-    df[i,"population"]<-imp_pop[miss_pop_city,"avg_pop"]
-  }
-}
-
-# amazon_web replace NAs and "-" with zero
-df <- df %>% mutate(amazon_web=ifelse(is.na(amazon_web),0,1))
-df$amazon_web <- as.factor(df$amazon_web)
-
-# Impute 0 for NA shop size in case of webshops
-df <- df %>% 
-  mutate(size_of_the_shop_m2 = ifelse((partner_profil_oracle=="Webshop" & is.na(size_of_the_shop_m2)),0,size_of_the_shop_m2))
-
-# Calculate new variables
-df <- df %>%  mutate(
-  sales_yoy = sales_this_year/last_year_sales-1,
-  protein_sales_share = protein_sales_this_year/sales_this_year,
-  protein_gm_share = protein_gm_this_year/gm_this_year
-)
-
-# Remove observations with NA
-df <- na.omit(df)
-```
 
 ```{r preprocessing_0}
 # Select variables to be used in clustering
@@ -557,6 +509,29 @@ agg_sales_pot<-sales_pot %>%
 # agg_sales_pot <- agg_sales_pot %>% gather(metric, value, -c("cluster"))
 # reshape(agg_sales_pot, idvar = "cluster", varying = list(names(agg_sales_pot)[2:3]),timevar = "metric",v.names = "Value", direction = "long")
 
+ggplot(df, aes(x = partner_profil_oracle, y = ln_sales_this_year)) +
+  geom_point() +
+  theme_bw() +
+  geom_smooth(method="loess" , formula = y ~ x )+
+  labs( title = "Pattern of association between log sales this year and partner profile",
+        y = "Log sales this year",
+        x = "Partner's profile")
+
+p1<-ggplot(agg_sales_pot)+
+  geom_bar(aes(x= cluster,y=avg_gm_this_year), fill=color[1], stat = "identity")+
+  labs(x="Customer Segment",y="Avg. Gross Margin")
+
+p2<-ggplot(agg_sales_pot)+
+  geom_point(aes(x= cluster,y=agg_sales_yoy),color=color[2], size=4)+
+  labs(x="Customer Segment",y="Change in Sales")+
+  expand_limits(y = 0)
+  
+stats_grid<-plot_grid(p1,p2,nrow=1,ncol=2)
+stats_grid
+
 ```
 
+```{r cluster_characteristics}
 
+
+```
