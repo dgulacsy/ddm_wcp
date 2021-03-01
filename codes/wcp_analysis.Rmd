@@ -269,13 +269,6 @@ df$ln_protein_sales_this_year <- log(df$protein_sales_this_year)
 ```
 
 ```{r}
-ggplot( df , aes(x = confirmed, y = death)) +
-  geom_point() +
-  geom_smooth(method="loess")+
-  labs(x = "Number of confirmed cases",y = "Number of deaths")
-```
-
-```{r}
 library(GGally)
 ggcorr(df)
 ```
@@ -285,14 +278,6 @@ ggplot( df , aes(x = ln_last_year_sales, y = ln_gm_this_year)) +
   geom_point() +
   geom_smooth(method="loess")+
   labs(x = "Log last year sales",y = "Log gross margin this year")
-```
-
-
-```{r}
-ggplot( df , aes(x = confirmed, y = death)) +
-  geom_point() +
-  geom_smooth(method="loess")+
-  labs(x = "Number of confirmed cases",y = "Number of deaths")
 ```
 
 ```{r}
