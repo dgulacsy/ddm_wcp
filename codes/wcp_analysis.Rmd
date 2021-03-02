@@ -38,6 +38,7 @@ library(factoextra)
 # Set visuals
 theme_set(theme_minimal())
 color=c("slateblue","violetred","gray")
+out <- "out/"
 
 ```
 
@@ -434,7 +435,7 @@ data <- select(data_partner,-partner_code)
 ```{r preprocessing_1}
 # Preprocess data with PCA & scaling -------
 # Factors to Numeric
-to_numeric<- c("state","region","partner_profil_oracle","amazon_web","relationship_quality","stand_alone_shops")
+to_numeric<- c("state","region","amazon_web","relationship_quality","stand_alone_shops")
 
 data <- data %>% mutate_at(to_numeric, funs(as.numeric(.))
 )
@@ -486,6 +487,7 @@ centers <- data.frame(km$centers) %>%
 
 pca_loads<-as.data.frame(abs(sort(-abs(pca$rotation[,"PC1"]))[1:2]))
 names(pca_loads)<-"PCA Loads"
+pca_loads
 
 data_wcc <- rbind(data_wc, centers)
 
@@ -512,89 +514,68 @@ sales_pot<-left_join(df,select(data_wc,c("cluster","partner_code")), by="partner
 agg_sales_pot<-sales_pot %>% 
   group_by(cluster) %>% 
   summarise(
+    avg_sales_this_year = mean(sales_this_year),
     avg_gm_this_year = mean(gm_this_year),
     agg_sales_yoy = sum(sales_this_year)/sum(last_year_sales)-1,
-    agg_sow = mean(company_p_in_shops), # Share of wallet
-    
+    avg_company_p_in_shops = mean(company_p_in_shops)
   )
 
-# agg_sales_pot <- agg_sales_pot %>% gather(metric, value, -c("cluster"))
-# reshape(agg_sales_pot, idvar = "cluster", varying = list(names(agg_sales_pot)[2:3]),timevar = "metric",v.names = "Value", direction = "long")
+substr(metric, 5, nchar(metric))
 
-p1<-ggplot(agg_sales_pot)+
-  geom_bar(aes(x= cluster,y=avg_gm_this_year), fill=color[1], stat = "identity")+
-  labs(x="Customer Segment",y="Avg. Gross Margin")
+agg_sales_pot_mod <- agg_sales_pot %>% gather(metric, value, -c("cluster")) %>% 
+  mutate(is_mean=ifelse(grepl("avg_", metric, fixed = TRUE),TRUE,FALSE),
+         se=ifelse(is_mean,sd(df[,substr(metric, 5, nchar(metric))][[1]])/sqrt(n()),NA))
 
-p2<-ggplot(agg_sales_pot)+
-  geom_point(aes(x= cluster,y=agg_sales_yoy),color=color[2], size=4)+
-  labs(x="Customer Segment",y="Change in Sales")+
-  expand_limits(y = 0)
-  
-stats_grid<-plot_grid(p1,p2,nrow=1,ncol=2)
-stats_grid
+ggplot(agg_sales_pot_mod)+
+  geom_bar(aes(x=cluster, y=value, fill=cluster), stat="identity")+
+  facet_wrap(~ metric, scales = "free")+
+  scale_fill_manual(values=c(color[1], color[2]))
+ggsave(paste0(out, "sales_pot.png"), width = 6, height= 6, dpi = 1200)
+
+
+
+# p1<-ggplot(agg_sales_pot)+
+#   geom_bar(aes(x= cluster,y=avg_sales_this_year, fill=cluster), stat = "identity")+
+#   labs(x="Customer Segment",y="Avg. Sales")+
+#   expand_limits(y = 0)
+# 
+# p2<-ggplot(agg_sales_pot)+
+#   geom_bar(aes(x= cluster,y=avg_gm_this_year, fill=cluster), stat = "identity")+
+#   labs(x="Customer Segment",y="Avg. Gross Margin")
+# 
+# p3<-ggplot(agg_sales_pot)+
+#   geom_bar(aes(x= cluster,y=agg_sales_yoy, fill=cluster), stat = "identity")+
+#   labs(x="Customer Segment",y="Change in Sales")+
+#   expand_limits(y = 0)
+# 
+# p4<-ggplot(agg_sales_pot)+
+#   geom_bar(aes(x= cluster,y=avg_share_of_wallet, fill=cluster), stat = "identity")+
+#   labs(x="Customer Segment",y="Avg. Share of Wallet")+
+#   expand_limits(y = 0)
+#   
+# stats_grid<-plot_grid(p1,p2,p3,p4,nrow=2,ncol=2)
+# stats_grid
 
 ```
 
 ```{r cluster_characteristics}
-sales_pot$cluster<-as.factor(sales_pot$cluster)
-ggplot(sales_pot)+
-  geom_bar(aes(x= cluster, y = mean(gm_this_year)), stat="identity")
 
-# compute lower and upper whiskers
-ylim1 = boxplot.stats(sales_pot$gm_this_year)$stats[c(1, 5)]
 
-# scale y limits based on ylim1
-p1 = p0 + coord_cartesian(ylim = ylim1*1.05)
-clust1<-sales_pot[sales_pot$cluster=="1","gm_this_year"]
-mean(clust1$gm_this_year, na.rm = T)
-p0$layers
-```
+vars<-c("protein_sales_share","protein_gm_share","population","stand_alone_shops","number_of_months_when_ordered", "sales_channel_p_other","sales_channel_p_webshop", "sales_channel_p_shop", "sales_channel_p_gym", "sales_channel_p_distributor", "amazon_web", "relationship_quality")
 
-```{r}
-conditional_means <- function(df, vars, factor, factor_lab){
-
-}
-
-se <- function(var) {
-  return()
-}
-
-df<-sales_pot
-vars<-c("gm_this_year","number_of_months_when_ordered")
-vars <- setdiff(vars, group_vars(df))
-factor<-df$cluster
-factor_lab <- "Cluster"
-
-  factor_var <- as.name("cluster")
-  
-  stats <- df %>%
-    group_by(!!factor) %>%
-    summarise_(mean = mean(., na.rm=TRUE), se = se())
-
-stats <- df %>% 
+means <- sales_pot %>% 
   select_at(vars(cluster, vars)) %>%
   gather(key = 'key', value = 'value', -cluster) %>%
   group_by(cluster, key) %>%
-  summarise(mean = mean(value, na.rm = T), se = sd(value)/sqrt(n()))
-  
-  ggplot(stats, aes_string(colnames(stats)[1], colnames(stats)[3], fill = colnames(stats)[2]))+
-    geom_bar(stat='identity', position = position_dodge(width=0.9), alpha=0.8)+
-    geom_errorbar(aes(ymin=mean-(1.96*se),ymax=mean+(1.96*se)),
-                  position=position_dodge(width = 0.9), width = 0.25)+
-    ylab('Mean Price')+
-    xlab(factor_lab) +
-    theme_bw()+
-    theme(panel.grid.major=element_blank(),
-          panel.grid.minor=element_blank(),
-          panel.border=element_blank(),
-          axis.line=element_line(),
-          legend.position = "top",
-          #legend.position = c(0.7, 0.9),
-          legend.box = "vertical",
-          legend.text = element_text(size = 5),
-          legend.title = element_text(size = 5, face = "bold"),
-          legend.key.size = unit(x = 0.4, units = "cm")
-    )
+  summarise(mean = mean(as.numeric(value), na.rm = T), se = sd(value)/sqrt(n()))
+means
 
+ggplot(means)+
+  geom_bar(aes(x=cluster, y=mean, fill=cluster), stat="identity")+
+  geom_errorbar(data=means,aes(x=cluster, y=mean, fill=cluster, ymin=mean-(1.96*se),ymax=mean+(1.96*se)),inherit.aes = FALSE,
+                 position=position_dodge(width = 0.9), width = 0.25)+
+  facet_wrap(~ key, scales = "free", ncol=3)+
+  scale_fill_manual(values=c(color[1], color[2]))
+ggsave(paste0(out, "cluster_chars.png"), width = 10, height= 12, dpi = 1200)
 ```
 
