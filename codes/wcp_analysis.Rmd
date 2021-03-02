@@ -174,7 +174,7 @@ df <- df %>%
 
 # Calculate new variables
 df <- df %>% mutate(
-  sales_delta <- sales_this_year - last_year_sales,
+  sales_delta = sales_this_year - last_year_sales,
   sales_yoy = ifelse(last_year_sales==0,NA,sales_this_year/last_year_sales-1),
   protein_sales_share = protein_sales_this_year/sales_this_year,
   protein_gm_share = protein_gm_this_year/gm_this_year
@@ -342,6 +342,16 @@ ggplot(df, aes(x = partner_profil_oracle, y = ln_protein_gm_this_year)) +
   labs( title = "Pattern of association between protein gross margin this year and partner profile",
         y = "Protein gross margin this year",
         x = "Partner's profile")
+
+
+ggplot(df, aes(x = partner_profil_oracle, y = ln_sales_this_year)) +
+  geom_point() +
+  theme_bw() +
+  geom_smooth(method="loess" , formula = y ~ x )+
+  labs( title = "Pattern of association between log sales this year and partner profile",
+        y = "Log sales this year",
+        x = "Partner's profile")
+
 ```
 
 
@@ -416,7 +426,7 @@ kable(arrange(webshops,desc(size_of_the_shop_m2)))
 ```{r preprocessing_0}
 # Select variables to be used in clustering
 skim(df)
-vars=c("partner_code","state","region","partner_profil_oracle","sales_this_year", "last_year_sales","gm_this_year", "number_of_months_when_ordered","population","size_of_the_shop_m2","stand_alone_shops","sales_channel_p_shop","sales_channel_p_webshop","sales_channel_p_distributor","sales_channel_p_gym","sales_channel_p_other","amazon_web","relationship_quality")
+vars=c("partner_code","state","region", "company_p_in_shops","sales_this_year", "last_year_sales","gm_this_year", "number_of_months_when_ordered","population","size_of_the_shop_m2","stand_alone_shops","sales_channel_p_shop","sales_channel_p_webshop","sales_channel_p_distributor","sales_channel_p_gym","sales_channel_p_other","amazon_web","relationship_quality")
 data_partner<-df %>% select(all_of(vars))
 data <- select(data_partner,-partner_code)
 ```
@@ -452,8 +462,8 @@ nb <- NbClust(data_pca, method = "kmeans",
 message("Best number of clusters for PCA dataset based on gap index is: ",nb$Best.nc[1])
 
 fviz_nbclust(data, FUNcluster = kmeans, method = c("gap_stat"), diss = NULL, k.max = 10, nboot = 100,
-  verbose = interactive(), barfill = "steelblue",
-  barcolor = "steelblue", linecolor = "steelblue",
+  verbose = interactive(), barfill = color[1],
+  barcolor = color[1], linecolor = color[1],
   print.summary = TRUE)
 
 ```
@@ -461,12 +471,11 @@ fviz_nbclust(data, FUNcluster = kmeans, method = c("gap_stat"), diss = NULL, k.m
 ```{r clustering}
 set.seed(20210226)
 km <- kmeans(data, centers = 2)
-km$tot.withinss
+message("Within Cluster Sum of Squares with scaling: ",km$tot.withinss)
 
 set.seed(20210226)
 km_pca <- kmeans(data_pca, centers = 2)
-km_pca$tot.withinss
-
+message("Within Cluster Sum of Squares with PCA preprocessing: ",km_pca$tot.withinss)
 
 # Clustering Visualized by sales_this_year and gm_this_year
 data_wc <- cbind(data, 
@@ -480,11 +489,12 @@ names(pca_loads)<-"PCA Loads"
 
 data_wcc <- rbind(data_wc, centers)
 
-ggplot(data_wcc, 
+data_wcc_plot<-filter(data_wcc,gm_this_year<10)
+ggplot(data_wcc_plot, 
        aes(x = sales_this_year, 
            y = gm_this_year, 
            color = cluster,
-           size = ifelse(cluster == "center", 2, 1))) + 
+           size = ifelse(cluster == "center", 0.8, 0.8))) + 
   geom_point() +
   scale_size(guide = 'none')+
   labs(title="Partners by Sales and Gross Margin", y="Sales", x="Gross Margin", caption = "(Variables are scaled)")
@@ -503,19 +513,13 @@ agg_sales_pot<-sales_pot %>%
   group_by(cluster) %>% 
   summarise(
     avg_gm_this_year = mean(gm_this_year),
-    agg_sales_yoy = sum(sales_this_year)/sum(last_year_sales)-1
+    agg_sales_yoy = sum(sales_this_year)/sum(last_year_sales)-1,
+    agg_sow = mean(company_p_in_shops), # Share of wallet
+    
   )
 
 # agg_sales_pot <- agg_sales_pot %>% gather(metric, value, -c("cluster"))
 # reshape(agg_sales_pot, idvar = "cluster", varying = list(names(agg_sales_pot)[2:3]),timevar = "metric",v.names = "Value", direction = "long")
-
-ggplot(df, aes(x = partner_profil_oracle, y = ln_sales_this_year)) +
-  geom_point() +
-  theme_bw() +
-  geom_smooth(method="loess" , formula = y ~ x )+
-  labs( title = "Pattern of association between log sales this year and partner profile",
-        y = "Log sales this year",
-        x = "Partner's profile")
 
 p1<-ggplot(agg_sales_pot)+
   geom_bar(aes(x= cluster,y=avg_gm_this_year), fill=color[1], stat = "identity")+
@@ -532,6 +536,65 @@ stats_grid
 ```
 
 ```{r cluster_characteristics}
+sales_pot$cluster<-as.factor(sales_pot$cluster)
+ggplot(sales_pot)+
+  geom_bar(aes(x= cluster, y = mean(gm_this_year)), stat="identity")
 
+# compute lower and upper whiskers
+ylim1 = boxplot.stats(sales_pot$gm_this_year)$stats[c(1, 5)]
+
+# scale y limits based on ylim1
+p1 = p0 + coord_cartesian(ylim = ylim1*1.05)
+clust1<-sales_pot[sales_pot$cluster=="1","gm_this_year"]
+mean(clust1$gm_this_year, na.rm = T)
+p0$layers
+```
+
+```{r}
+conditional_means <- function(df, vars, factor, factor_lab){
+
+}
+
+se <- function(var) {
+  return()
+}
+
+df<-sales_pot
+vars<-c("gm_this_year","number_of_months_when_ordered")
+vars <- setdiff(vars, group_vars(df))
+factor<-df$cluster
+factor_lab <- "Cluster"
+
+  factor_var <- as.name("cluster")
+  
+  stats <- df %>%
+    group_by(!!factor) %>%
+    summarise_(mean = mean(., na.rm=TRUE), se = se())
+
+stats <- df %>% 
+  select_at(vars(cluster, vars)) %>%
+  gather(key = 'key', value = 'value', -cluster) %>%
+  group_by(cluster, key) %>%
+  summarise(mean = mean(value, na.rm = T), se = sd(value)/sqrt(n()))
+  
+  ggplot(stats, aes_string(colnames(stats)[1], colnames(stats)[3], fill = colnames(stats)[2]))+
+    geom_bar(stat='identity', position = position_dodge(width=0.9), alpha=0.8)+
+    geom_errorbar(aes(ymin=mean-(1.96*se),ymax=mean+(1.96*se)),
+                  position=position_dodge(width = 0.9), width = 0.25)+
+    ylab('Mean Price')+
+    xlab(factor_lab) +
+    theme_bw()+
+    theme(panel.grid.major=element_blank(),
+          panel.grid.minor=element_blank(),
+          panel.border=element_blank(),
+          axis.line=element_line(),
+          legend.position = "top",
+          #legend.position = c(0.7, 0.9),
+          legend.box = "vertical",
+          legend.text = element_text(size = 5),
+          legend.title = element_text(size = 5, face = "bold"),
+          legend.key.size = unit(x = 0.4, units = "cm")
+    )
 
 ```
+
