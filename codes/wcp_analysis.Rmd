@@ -37,7 +37,7 @@ library(factoextra)
 
 # Set visuals
 theme_set(theme_minimal())
-color=c("slateblue","violetred","gray")
+color=c("#6c254a","#d45b9f","gray")
 out <- "out/"
 
 ```
@@ -496,16 +496,21 @@ ggplot(data_wcc_plot,
        aes(x = sales_this_year, 
            y = gm_this_year, 
            color = cluster,
-           size = ifelse(cluster == "center", 0.8, 0.8))) + 
+           size = ifelse(cluster == "center", 0.2, 0.2))) + 
   geom_point() +
   scale_size(guide = 'none')+
-  labs(title="Partners by Sales and Gross Margin", y="Sales", x="Gross Margin", caption = "(Variables are scaled)")
+  labs(title="Partners by Sales and Gross Margin", y="Sales", x="Gross Margin", caption = "(Variables are scaled)")+
+  scale_color_manual(values=c(color[1], color[2],color[3]))
+ggsave(paste0(out, "clustering_driver_vars.png"), width = 5, height= 5, dpi = 1200)
 
 # Clustering Visualized by PC1 and PC2
 data_pca <- as.data.frame(cbind(data_pca,cluster=data_wc$cluster))
 ggplot(data_pca,aes(x=PC2,y=PC1,color=as.factor(cluster)))+
   geom_point()+
-  labs(title="Partners by first and second principle components")
+  labs(title="Partners by first and second principle components",
+       color = "Customer seg.")+
+  scale_color_manual(values=c(color[1], color[2]))
+ggsave(paste0(out, "pcs_cluster.png"), width = 6, height= 5, dpi = 1200)
 ```
 
 ```{r highest_sales_potential}
@@ -530,8 +535,7 @@ ggplot(agg_sales_pot_mod)+
   geom_bar(aes(x=cluster, y=value, fill=cluster), stat="identity")+
   facet_wrap(~ metric, scales = "free")+
   scale_fill_manual(values=c(color[1], color[2]))
-ggsave(paste0(out, "sales_pot.png"), width = 6, height= 6, dpi = 1200)
-
+ggsave(paste0(out, "sales_pot.png"), width = 5, height= 5, dpi = 1200)
 
 
 # p1<-ggplot(agg_sales_pot)+
@@ -576,6 +580,6 @@ ggplot(means)+
                  position=position_dodge(width = 0.9), width = 0.25)+
   facet_wrap(~ key, scales = "free", ncol=3)+
   scale_fill_manual(values=c(color[1], color[2]))
-ggsave(paste0(out, "cluster_chars.png"), width = 10, height= 12, dpi = 1200)
+ggsave(paste0(out, "cluster_chars.png"), width = 8, height= 6, dpi = 1200)
 ```
 
